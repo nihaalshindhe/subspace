@@ -1,6 +1,6 @@
 const axios = require("axios");
 
-const createClient = require("../axios");
+const createClient = require("../config/axios");
 
 let cachedToken = null;
 let tokenExpiry = null;

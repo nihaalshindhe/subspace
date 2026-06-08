@@ -1,6 +1,4 @@
 const readline = require("readline");
-
-const states = require("../constants/states");
 const logger = require("../utils/logger");
 
 function askQuestion(question) {
@@ -17,10 +15,9 @@ function askQuestion(question) {
     });
 }
 
-async function reviewWorker(job) {
+async function reviewWorker(emailItems) {
     try {
-
-        logger.info(`Review worker started for job ${job.id}`);
+        logger.info("Review stage started");
 
         console.log("\n");
         console.log("=================================");
@@ -28,46 +25,33 @@ async function reviewWorker(job) {
         console.log("=================================");
         console.log("\n");
 
-        console.log(`Companies Found : ${job.stats.companiesFound}`);
+        console.log(
+            `Emails Ready To Send : ${emailItems.length}`
+        );
 
-        console.log(`Contacts Found  : ${job.stats.contactsFound}`);
-
-        console.log(`Emails Resolved : ${job.stats.emailsResolved}`);
-
-        console.log("\nSample Contacts\n");
+        console.log("\nSample Emails\n");
 
         console.table(
-            job.contacts.slice(0, 10).map(contact => ({
-                Name: contact.name,
-                Company: contact.company,
-                Email: contact.email
+            emailItems.slice(0, 10).map(item => ({
+                Name: `${item.payload.firstName || ""} ${item.payload.lastName || ""}`.trim(),
+                Company: item.payload.companyDomain,
+                Email: item.payload.email.email
             }))
         );
 
-        const answer = await askQuestion("\nProceed with email campaign? (Y/N): ");
+        const answer = await askQuestion(
+            "\nProceed with email campaign? (Y/N): "
+        );
 
-        if (
-            answer.toLowerCase() !== "y"
-        ) {
-
-            logger.warn(`Campaign cancelled by user`);
-
-            job.updateState(states.COMPLETED);
-            return job;
+        if (answer.toLowerCase() !== "y") {
+            logger.warn("Campaign cancelled by user");
+            return false;
         }
 
-        logger.info(`Campaign approved`);
-
-        job.updateState(states.BREVO_PENDING);
-
-        return job;
-
+        logger.info("Campaign approved");
+        return true;
     } catch (error) {
-
-        logger.error(`Review worker failed: ${error.message}`);
-
-        job.lastError = error.message;
-
+        logger.error(`Review stage failed: ${error.message}`);
         throw error;
     }
 }

@@ -1,79 +1,55 @@
 const states = require("../constants/states");
+const WorkItem = require("../models/work-item.model");
+
 const prospeoService = require("../services/prospeo.service");
 
 const retry = require("../utils/retry");
 const logger = require("../utils/logger");
 const dedupe = require("../utils/dedupe");
 
-async function prospeoWorker(job) {
-    try {
-        logger.info(
-            `Prospeo worker started for job ${job.id}`
-        );
+async function prospeoWorker(item) {
+    const domain = item.payload.domain;
 
-        const contacts = [];
+    logger.info(`Prospeo worker started for ${domain}`);
 
-        for (const company of job.companies) {
-            try {
-                const results = await retry(
-                    () =>
-                        prospeoService.findDecisionMakers(
-                            company.domain
-                        ),
-                    2
-                );
+    const results = await retry(
+        () =>
+            prospeoService.findDecisionMakers(domain),
+        2
+    );
 
-                if (!results?.length) {
-                    logger.warn(
-                        `No contacts found for ${company.domain}`
-                    );
-                    continue;
-                }
+    console.log(JSON.stringify(results, null, 2));
 
-                for (const contact of results) {
-                    if (
-                        !dedupe.addLinkedin(
-                            contact.linkedin
-                        )
-                    ) {
-                        continue;
-                    }
+    const nextItems = [];
 
-                    contacts.push(contact);
-                }
-            } catch (error) {
-                logger.warn(
-                    `Prospeo failed for ${company.domain}: ${error.message}`
-                );
-
-                continue;
-            }
+    for (const contact of results || []) {
+        if (!contact.email) {
+            continue;
         }
 
-        job.contacts = contacts;
+        if (!dedupe.addEmail(contact.email)) {
+            continue;
+        }
 
-        job.stats.contactsFound =
-            contacts.length;
-
-        logger.info(
-            `Collected ${contacts.length} unique contacts`
+        nextItems.push(
+            new WorkItem({
+                type: "EMAIL_CONTACT",
+                status: states.REVIEW_PENDING,
+                payload: {
+                    email: contact.email,
+                    linkedinUrl: contact.linkedin,
+                    firstName: contact.firstName,
+                    lastName: contact.lastName,
+                    title: contact.title,
+                    companyDomain: domain
+                }
+            })
         );
-
-        job.updateState(
-            states.EAZYREACH_PENDING
-        );
-
-        return job;
-
-    } catch (error) {
-        logger.error(
-            `Prospeo worker failed: ${error.message}`
-        );
-
-        job.lastError = error.message;
-
-        throw error;
     }
+
+    logger.info(`Found ${nextItems.length} contacts with emails for ${domain}`);
+
+    return nextItems;
 }
 
 module.exports = prospeoWorker;

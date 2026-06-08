@@ -6,58 +6,51 @@ const retry = require("../utils/retry");
 
 const logger = require("../utils/logger");
 
-async function brevoWorker(job) {
+async function brevoWorker(item) {
     try {
+        const emailData = item.payload.email;
 
-        logger.info(`Brevo worker started for job ${job.id}`);
+        if (
+            !emailData ||
+            emailData.status !== "VERIFIED" ||
+            !emailData.revealed ||
+            !emailData.email
+        ) {
+            logger.warn(
+                `Skipping item ${item.id} - email not verified or not revealed`
+            );
 
-        let sentCount = 0;
+            item.updateStatus(states.COMPLETED);
 
-        for (const contact of job.contacts) {
-
-            try {
-
-                if (!contact.email) {
-                    logger.warn(`Skipping contact with missing email`);
-                    continue;
-                }
-
-                await retry(
-                    () =>
-                        brevoService.sendEmail({
-                            to: contact.email,
-                            subject: "Quick Outreach"
-                        }),
-                    2
-                );
-
-                sentCount++;
-
-                logger.info(`Email sent to ${contact.email}`);
-
-            } catch (error) {
-
-                logger.warn(
-                    `Failed to send email to ${contact.email}: ${error.message}`
-                );
-
-                continue;
-            }
+            return [];
         }
 
-        job.stats.emailsSent = sentCount;
+        logger.info(
+            `Sending email to ${emailData.email}`
+        );
 
-        logger.info(`Successfully sent ${sentCount} emails`);
+        await retry(
+            () =>
+                brevoService.sendEmail({
+                    to: emailData.email,
+                    subject: "Quick Outreach"
+                }),
+            2
+        );
 
-        job.updateState(states.COMPLETED);
+        logger.info(
+            `Email sent to ${emailData.email}`
+        );
 
-        return job;
+        item.updateStatus(states.COMPLETED);
 
+        return [];
     } catch (error) {
+        logger.error(
+            `Failed sending email: ${error.message}`
+        );
 
-        logger.error(`Brevo worker failed: ${error.message}`);
-
-        job.lastError = error.message;
+        item.lastError = error.message;
 
         throw error;
     }

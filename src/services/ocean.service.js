@@ -1,4 +1,4 @@
-const createClient = require("../axios");
+const createClient = require("../config/axios");
 
 const oceanClient = createClient({
     baseURL: "https://api.ocean.io/v3",
@@ -10,6 +10,7 @@ const oceanClient = createClient({
 });
 
 async function findLookalikes(domain) {
+
     const payload = {
         companiesFilters: {
             lookalikeDomains: [domain]
@@ -24,13 +25,64 @@ async function findLookalikes(domain) {
 
     const companies = response.data?.companies || [];
 
-    return companies.map(company => ({
-        name: company.name,
-        domain: company.domain,
-        industry: company.industry || null,
-        size: company.size || null,
-        location: company.location || null
-    }));
+    return companies
+        .map(result => ({
+            domain: result.company?.domain,
+            industry: result.company?.industries?.[0] || null,
+            size: result.company?.companySize || null,
+            location: result.company?.primaryCountry || null
+        }))
+        .filter(company => company.domain);
+
+    /*
+    const companies = [];
+
+    let searchAfter;
+
+    while (companies.length < targetCount) {
+
+        const payload = {
+            size: Math.min(
+                100,
+                targetCount - companies.length
+            ),
+            companiesFilters: {
+                lookalikeDomains: [domain],
+                excludeDomains: [domain]
+            }
+        };
+
+        if (searchAfter) {
+            payload.searchAfter =
+                searchAfter;
+        }
+
+        const response =
+            await oceanClient.post(
+                "/search/companies",
+                payload
+            );
+
+        const results = response.data?.companies || [];
+
+        companies.push(...results);
+
+        searchAfter =  response.data?.searchAfter;
+
+        if (!searchAfter) {
+            break;
+        }
+    }
+
+    return companies
+        .map(result => ({
+            domain: result.company?.domain,
+            industry: result.company?.industries?.[0] || null,
+            size: result.company?.companySize ||  null,
+            location: result.company?.primaryCountry || null
+       }))
+        .filter(company => company.domain);
+    */
 }
 
 module.exports = {

@@ -1,4 +1,4 @@
-const createClient = require("../axios");
+const createClient = require("../config/axios");
 
 const prospeoClient = createClient({
     baseURL: "https://api.prospeo.io",
@@ -9,7 +9,7 @@ const prospeoClient = createClient({
     }
 });
 
-async function findDecisionMakers(domain, maxPages = 3) {
+async function findDecisionMakers(domain, maxPages = 1) {
     let page = 1;
     let allPeople = [];
 
@@ -37,26 +37,39 @@ async function findDecisionMakers(domain, maxPages = 3) {
             payload
         );
 
-        const people =
-            response.data?.data ||
-            response.data?.results ||
-            [];
+        const people = response.data?.results || [];
 
         if (!people.length) break;
 
         allPeople.push(
-            ...people.map(person => ({
-                fullName: person.full_name,
-                firstName: person.first_name,
-                lastName: person.last_name,
-                title: person.job_title,
-                company: person.company_name,
-                email: person.email || null,
-                linkedin: person.linkedin_url || null,
-                seniority: person.seniority || null,
+            ...people.map(result => ({
+                fullName: result.person?.full_name,
+
+                firstName: result.person?.first_name,
+
+                lastName: result.person?.last_name,
+
+                title: result.person?.job_title,
+
+                company: result.company?.name,
+
+                email: result.person?.email || null,
+
+                linkedin: result.person?.linkedin_url || null,
+
+                seniority: result.person?.seniority || null,
+
                 domain
             }))
         );
+
+        /*
+        const pagination = response.data?.pagination;
+
+        if (!pagination || page >= pagination.total_page) {
+            break;
+        }
+        */
 
         page++;
     }

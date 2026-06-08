@@ -1,83 +1,100 @@
 require("dotenv").config();
 
-const Job = require("./models/job.model");
+const WorkItem = require("./models/work-item.model");
 
 const queue = require("./queue/job.queue");
-const processState = require("./queue/state.processor");
 
-const states = require("./constants/states");
-const logger = require("./utils/logger");
+const processState =
+    require("./queue/state.processor");
+
+const reviewWorker =
+    require("./workers/review.worker");
+
+const States =
+    require("./constants/states");
+
+const logger =
+    require("./utils/logger");
 
 async function run() {
-    const seedDomain = process.argv[2];
+
+    const seedDomain =
+        process.argv[2];
 
     if (!seedDomain) {
-        logger.error("Missing seed domain");
+
+        logger.error(
+            "Missing seed domain"
+        );
+
         process.exit(1);
     }
 
-    const job = new Job(seedDomain);
+    const seedItem =
+        new WorkItem({
+            type: "DOMAIN",
+            status:
+            States.OCEAN_PENDING,
+            payload: {
+                domain: seedDomain
+            }
+        });
 
-    queue.enqueue(job);
-
-    logger.info(
-        `Job created: ${job.id}`
+    queue.enqueue(
+        seedItem
     );
 
-    while (queue.hasJobs()) {
+    const emailItems = [];
 
-        const currentJob =
+    while (
+        queue.hasJobs()
+        ) {
+
+        const item =
             queue.dequeue();
 
         try {
 
             logger.info(
-                `Processing ${currentJob.state}`
+                `Processing ${item.status}`
             );
 
-            const updatedJob =
+            const results =
                 await processState(
-                    currentJob
+                    item
                 );
 
             if (
-                updatedJob.state !==
-                states.COMPLETED
+                Array.isArray(results)
             ) {
 
-                queue.enqueue(
-                    updatedJob
-                );
+                for (
+                    const result
+                    of results
+                    ) {
 
-            } else {
+                    if (
+                        result.status ===
+                        States.REVIEW_PENDING
+                    ) {
 
-                logger.info(
-                    `Job ${updatedJob.id} completed successfully`
-                );
+                        emailItems.push(
+                            result
+                        );
 
-                logger.info(
-                    `Companies Found: ${updatedJob.stats.companiesFound}`
-                );
+                    } else {
 
-                logger.info(
-                    `Contacts Found: ${updatedJob.stats.contactsFound}`
-                );
-
-                logger.info(
-                    `Emails Resolved: ${updatedJob.stats.emailsResolved}`
-                );
-
-                logger.info(
-                    `Emails Sent: ${updatedJob.stats.emailsSent}`
-                );
+                        queue.enqueue(
+                            result
+                        );
+                    }
+                }
             }
 
         } catch (error) {
 
-            currentJob.stateRetryCount++;
-
-            logger.error(
-                `State ${currentJob.state} failed. Attempt ${currentJob.stateRetryCount}`
+            item.incrementRetry(
+                error.message
             );
 
             logger.error(
@@ -85,40 +102,81 @@ async function run() {
             );
 
             if (
-                currentJob.stateRetryCount < 3
+                item.retryCount < 3
             ) {
 
-                logger.warn(
-                    `Requeueing job ${currentJob.id}`
-                );
-
                 queue.enqueue(
-                    currentJob
+                    item
                 );
 
             } else {
 
-                currentJob.fail(
-                    error.message
-                );
-
                 logger.error(
-                    `Job ${currentJob.id} permanently failed`
-                );
-
-                logger.error(
-                    `Failure Reason: ${currentJob.failedReason}`
+                    `Item ${item.id} permanently failed`
                 );
             }
         }
     }
 
+    const approved =
+        await reviewWorker(
+            emailItems
+        );
+
+    if (!approved) {
+
+        logger.warn(
+            "Campaign cancelled"
+        );
+
+        return;
+    }
+
+    for (
+        const item
+        of emailItems
+        ) {
+
+        item.updateStatus(
+            States.BREVO_PENDING
+        );
+
+        queue.enqueue(
+            item
+        );
+    }
+
+    while (
+        queue.hasJobs()
+        ) {
+
+        const item =
+            queue.dequeue();
+
+        try {
+
+            await processState(
+                item
+            );
+
+        } catch (error) {
+
+            logger.error(
+                error.message
+            );
+        }
+    }
+
     logger.info(
-        "Queue processing completed"
+        "Pipeline completed"
     );
 }
 
 run().catch(error => {
-    logger.error(error.message);
+
+    logger.error(
+        error.message
+    );
+
     process.exit(1);
 });

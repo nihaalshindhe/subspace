@@ -1,59 +1,42 @@
-const states = require('../constants/states');
+const states = require("../constants/states");
+const WorkItem = require("../models/work-item.model");
+
 const oceanService = require("../services/ocean.service");
 
 const retry = require("../utils/retry");
 const logger = require("../utils/logger");
 const dedupe = require("../utils/dedupe");
 
-async function oceanWorker(job) {
-    try {
-        logger.info(
-            `Ocean worker started for job ${job.id}`
-        );
+async function oceanWorker(item) {
+    logger.info(`Ocean worker started for ${item.payload.domain}`);
 
-        const companies = await retry(() =>
-            oceanService.findLookalikes(
-                job.seedDomain
-            )
-        );
+    const companies = await retry(() =>
+        oceanService.findLookalikes(
+            item.payload.domain
+        )
+    );
 
-        const uniqueCompanies = [];
+    logger.info(`companies found: ${JSON.stringify(companies, null, 2)}`);
 
-        for (const company of companies) {
-            if (
-                !dedupe.addCompanyDomain(
-                    company.domain
-                )
-            ) {
-                continue;
-            }
+    const nextItems = [];
 
-            uniqueCompanies.push(company);
+    for (const company of companies) {
+        if (!dedupe.addCompanyDomain(company.domain)) {
+            continue;
         }
 
-        job.companies = uniqueCompanies;
-
-        job.stats.companiesFound =
-            uniqueCompanies.length;
-
-        job.updateState(
-            states.PROSPEO_PENDING
+        nextItems.push(
+            new WorkItem({
+                type: "COMPANY",
+                status: states.PROSPEO_PENDING,
+                payload: {
+                    domain: company.domain
+                }
+            })
         );
-
-        return job;
-
-    } catch (error) {
-
-        logger.error(
-            `Ocean worker failed: ${error.message}`
-        );
-
-        job.retryCount++;
-
-        job.lastError = error.message;
-
-        throw error;
     }
+
+    return nextItems;
 }
 
 module.exports = oceanWorker;

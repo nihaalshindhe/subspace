@@ -1,4 +1,4 @@
-const createClient = require("../axios");
+const createClient = require("../config/axios");
 
 const brevoClient = createClient({
     baseURL: "https://api.brevo.com/v3",
@@ -12,19 +12,20 @@ const STATIC_HTML = `
 <!DOCTYPE html>
 <html>
     <body>
-        <h2>Quick Outreach</h2>
+        
         <p>Hi there,</p>
 
         <p>
-            I came across your profile and thought it would be great to connect.
-            We help teams streamline outreach and automate lead generation workflows.
+            My name is nihaal shindhe and i am recent graduate and wnated to just take a few mins of ur time
+            to look into my profile https://www.linkedin.com/in/nihaalshindhe and would love to see if you have
+            oppurtunities for me in your company. 
         </p>
 
         <p>
             Would love to explore if there's a fit.
         </p>
 
-        <p>Best regards,<br/>Team</p>
+        <p>Best regards,<br/>Nihaal</p>
     </body>
 </html>
 `;
